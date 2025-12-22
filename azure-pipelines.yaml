@@ -26,7 +26,7 @@ stages:
     - task: AzureCLI@2
       displayName: Azure Login
       inputs:
-        azureSubscription: azure-spn-capstone
+        azureSubscription: stevens-capstone-dev-conn
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
