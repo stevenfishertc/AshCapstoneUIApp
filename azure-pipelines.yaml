@@ -1,0 +1,57 @@
+trigger:
+  branches:
+    include:
+      - main
+
+variables:
+  acrName: myacr
+  imageName: frontend
+  containerRegistry: myacr.azurecr.io
+  kubernetesNamespace: frontend
+  dockerfilePath: frontend/Dockerfile
+  buildContext: frontend
+
+stages:
+- stage: BuildAndPush
+  displayName: Build and Push Image
+  jobs:
+  - job: Build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: Docker@2
+      displayName: Build and Push Image
+      inputs:
+        command: buildAndPush
+        repository: $(imageName)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: stevens-capstone-dev-conn
+        buildContext: $(buildContext)
+        tags: |
+          $(Build.BuildId)
+          latest
+
+- stage: Deploy
+  displayName: Deploy to AKS
+  dependsOn: BuildAndPush
+  jobs:
+  - deployment: DeployFrontend
+    displayName: Deploy Frontend to AKS
+    environment: aks-frontend
+    pool:
+      vmImage: ubuntu-latest
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: KubernetesManifest@1
+            displayName: Deploy manifests
+            inputs:
+              action: deploy
+              kubernetesServiceConnection: stevens-capstone-dev-conn
+              namespace: $(kubernetesNamespace)
+              manifests: |
+                k8s/deployment.yaml
+                k8s/service.yaml
+              containers: |
+                $(containerRegistry)/$(imageName):$(Build.BuildId)
