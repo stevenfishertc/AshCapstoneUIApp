@@ -4,54 +4,74 @@ trigger:
       - main
 
 variables:
-  acrName: myacr
-  imageName: frontend
-  containerRegistry: myacr.azurecr.io
-  kubernetesNamespace: frontend
-  dockerfilePath: frontend/Dockerfile
-  buildContext: frontend
+  ACR_NAME: stevencapstoneacr #
+  IMAGE_NAME: frontend-app #
+  IMAGE_TAG: $(Build.BuildId) #
+  AKS_CLUSTER: aks-capstone-dev #
+  RESOURCE_GROUP: steven-rg-capstone-dev #
+  NAMESPACE: frontend #
+
+pool:
+  vmImage: ubuntu-latest
 
 stages:
-- stage: BuildAndPush
-  displayName: Build and Push Image
+- stage: BuildAndDeploy
+  displayName: Build & Deploy Frontend
   jobs:
-  - job: Build
-    pool:
-      vmImage: ubuntu-latest
+  - job: BuildDeploy
+    displayName: Docker Build → ACR → AKS
     steps:
-    - task: Docker@2
-      displayName: Build and Push Image
-      inputs:
-        command: buildAndPush
-        repository: $(imageName)
-        dockerfile: $(dockerfilePath)
-        containerRegistry: stevens-capstone-dev-conn
-        buildContext: $(buildContext)
-        tags: |
-          $(Build.BuildId)
-          latest
 
-- stage: Deploy
-  displayName: Deploy to AKS
-  dependsOn: BuildAndPush
-  jobs:
-  - deployment: DeployFrontend
-    displayName: Deploy Frontend to AKS
-    environment: aks-frontend
-    pool:
-      vmImage: ubuntu-latest
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - task: KubernetesManifest@1
-            displayName: Deploy manifests
-            inputs:
-              action: deploy
-              kubernetesServiceConnection: stevens-capstone-dev-conn
-              namespace: $(kubernetesNamespace)
-              manifests: |
-                k8s/deployment.yaml
-                k8s/service.yaml
-              containers: |
-                $(containerRegistry)/$(imageName):$(Build.BuildId)
+    # Azure login (unavoidable helper)
+    - task: AzureCLI@2
+      displayName: Azure Login
+      inputs:
+        azureSubscription: azure-spn-capstone
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az account show
+
+    # Docker build & push (SCRIPT-BASED)
+    - script: |
+        set -e
+        echo "Logging into ACR..."
+        az acr login --name $ACR_NAME
+
+        echo "Building Docker image..."
+        docker build \
+          -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
+          -f frontend/Dockerfile \
+          frontend
+
+        echo "Pushing Docker image..."
+        docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
+      displayName: Build and Push Docker Image
+
+    # Get AKS credentials
+    - script: |
+        set -e
+        echo "Fetching AKS credentials..."
+        az aks get-credentials \
+          --resource-group $RESOURCE_GROUP \
+          --name $AKS_CLUSTER \
+          --overwrite-existing
+      displayName: Configure kubectl for AKS
+
+    # Deploy to AKS
+    - script: |
+        set -e
+
+        echo "Creating namespace if missing..."
+        kubectl get ns $NAMESPACE || kubectl create ns $NAMESPACE
+
+        echo "Injecting image into manifest..."
+        sed "s|PLACEHOLDER_IMAGE|$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG|g" k8s/deployment.yaml \
+          | kubectl apply -f -
+
+        echo "Applying service..."
+        kubectl apply -f k8s/service.yaml
+
+        echo "Deployment status:"
+        kubectl rollout status deployment/frontend -n $NAMESPACE
+      displayName: Deploy to AKS

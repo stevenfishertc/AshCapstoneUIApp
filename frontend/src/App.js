@@ -36,7 +36,7 @@ function App() {
 
   return (
     <div className="page">
-      <h1>Multi-Backend Image Upload (Kubernetes)</h1>
+      <h1>Steven's Multi-Backend Image Upload (Kubernetes)</h1>
 
       <div className="grid">
         <div className="card">
