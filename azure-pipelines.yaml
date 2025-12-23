@@ -71,7 +71,6 @@ stages:
   jobs:
   - deployment: DeployDev
     displayName: Dev Deployment
-    environment: frontend-dev
     strategy:
       runOnce:
         deploy:
@@ -103,7 +102,7 @@ stages:
   jobs:
   - deployment: DeployQA
     displayName: QA Deployment
-    environment: frontend-qa
+    environment: qa-env
     strategy:
       runOnce:
         deploy:
@@ -135,7 +134,7 @@ stages:
   jobs:
   - deployment: DeployProd
     displayName: Prod Deployment
-    environment: frontend-prod
+    environment: production-env
     strategy:
       runOnce:
         deploy:
