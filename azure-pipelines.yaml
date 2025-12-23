@@ -31,22 +31,36 @@ stages:
         inlineScript: |
           az account show
 
-    # Build and push Docker image (script-first)
-    - script: |
-        set -e
+    - task: AzureCLI@2
+      displayName: Build & Push Image to ACR
+      inputs:
+        azureSubscription: stevens-capstone-dev-conn
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
 
-        echo "Logging into ACR..."
-        az acr login --name $ACR_NAME
+          echo "Getting ACR access token..."
+          TOKEN=$(az acr login \
+            --name $ACR_NAME \
+            --expose-token \
+            --output tsv \
+            --query accessToken)
 
-        echo "Building Docker image..."
-        docker build \
-          -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
-          -f frontend/Dockerfile \
-          frontend
+          echo "Logging Docker into ACR..."
+          docker login $ACR_NAME.azurecr.io \
+            -u 00000000-0000-0000-0000-000000000000 \
+            -p $TOKEN
 
-        echo "Pushing Docker image..."
-        docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
-      displayName: Build and Push Docker Image
+          echo "Building Docker image..."
+          docker build \
+            -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
+            -f frontend/Dockerfile \
+            frontend
+
+          echo "Pushing Docker image..."
+          docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
+
 
     # Configure Web App container
     - script: |
