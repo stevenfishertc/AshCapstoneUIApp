@@ -4,25 +4,24 @@ trigger:
       - main
 
 variables:
-  ACR_NAME: acrcapstonedeva1b2c #
-  IMAGE_NAME: frontend-app #
-  IMAGE_TAG: $(Build.BuildId) #
-  AKS_CLUSTER: aks-capstone-dev #
-  RESOURCE_GROUP: steven-rg-capstone-dev #
-  NAMESPACE: frontend #
+  ACR_NAME: stevencapstoneacr
+  IMAGE_NAME: frontend-app
+  IMAGE_TAG: $(Build.BuildId)
+  RESOURCE_GROUP: steven-rg-capstone-dev
+  WEBAPP_NAME: stevens-webapp-frontend-dev
 
 pool:
   vmImage: ubuntu-latest
 
 stages:
 - stage: BuildAndDeploy
-  displayName: Build & Deploy Frontend
+  displayName: Build & Deploy Frontend to Azure Web App
   jobs:
   - job: BuildDeploy
-    displayName: Docker Build → ACR → AKS
+    displayName: Docker → ACR → Web App
     steps:
 
-    # Azure login (unavoidable helper)
+    # Login to Azure
     - task: AzureCLI@2
       displayName: Azure Login
       inputs:
@@ -32,9 +31,10 @@ stages:
         inlineScript: |
           az account show
 
-    # Docker build & push (SCRIPT-BASED)
+    # Build and push Docker image (script-first)
     - script: |
         set -e
+
         echo "Logging into ACR..."
         az acr login --name $ACR_NAME
 
@@ -48,30 +48,27 @@ stages:
         docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
       displayName: Build and Push Docker Image
 
-    # Get AKS credentials
+    # Configure Web App container
     - script: |
         set -e
-        echo "Fetching AKS credentials..."
-        az aks get-credentials \
+
+        IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+
+        echo "Configuring Web App to use image: $IMAGE"
+
+        az webapp config container set \
+          --name $WEBAPP_NAME \
           --resource-group $RESOURCE_GROUP \
-          --name $AKS_CLUSTER \
-          --overwrite-existing
-      displayName: Configure kubectl for AKS
+          --docker-custom-image-name $IMAGE \
+          --docker-registry-server-url https://$ACR_NAME.azurecr.io
+      displayName: Update Web App Container Image
 
-    # Deploy to AKS
+    # Restart Web App (forces image pull)
     - script: |
         set -e
 
-        echo "Creating namespace if missing..."
-        kubectl get ns $NAMESPACE || kubectl create ns $NAMESPACE
-
-        echo "Injecting image into manifest..."
-        sed "s|PLACEHOLDER_IMAGE|$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG|g" k8s/deployment.yaml \
-          | kubectl apply -f -
-
-        echo "Applying service..."
-        kubectl apply -f k8s/service.yaml
-
-        echo "Deployment status:"
-        kubectl rollout status deployment/frontend -n $NAMESPACE
-      displayName: Deploy to AKS
+        echo "Restarting Web App..."
+        az webapp restart \
+          --name $WEBAPP_NAME \
+          --resource-group $RESOURCE_GROUP
+      displayName: Restart Web App
