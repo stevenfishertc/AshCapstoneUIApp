@@ -62,27 +62,37 @@ stages:
           docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
 
 
-    # Configure Web App container
-    - script: |
-        set -e
-
-        IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
-
-        echo "Configuring Web App to use image: $IMAGE"
-
-        az webapp config container set \
-          --name $WEBAPP_NAME \
-          --resource-group $RESOURCE_GROUP \
-          --container-image-name $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
-          --container-registry-url https://$ACR_NAME.azurecr.io
+        # Configure Web App container
+    - task: AzureCLI@2
       displayName: Update Web App Container Image
+      inputs:
+        azureSubscription: stevens-capstone-dev-conn
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+
+          echo "Configuring Web App to use image: $IMAGE"
+
+          az webapp config container set \
+            --name $WEBAPP_NAME \
+            --resource-group $RESOURCE_GROUP \
+            --container-image-name $IMAGE \
+            --container-registry-url https://$ACR_NAME.azurecr.io
 
     # Restart Web App (forces image pull)
-    - script: |
-        set -e
-
-        echo "Restarting Web App..."
-        az webapp restart \
-          --name $WEBAPP_NAME \
-          --resource-group $RESOURCE_GROUP
+    - task: AzureCLI@2
       displayName: Restart Web App
+      inputs:
+        azureSubscription: stevens-capstone-dev-conn
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+
+          echo "Restarting Web App..."
+          az webapp restart \
+            --name $WEBAPP_NAME \
+            --resource-group $RESOURCE_GROUP
