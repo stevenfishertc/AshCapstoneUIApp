@@ -73,8 +73,8 @@ stages:
         az webapp config container set \
           --name $WEBAPP_NAME \
           --resource-group $RESOURCE_GROUP \
-          --docker-custom-image-name $IMAGE \
-          --docker-registry-server-url https://$ACR_NAME.azurecr.io
+          --container-image-name $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
+          --container-registry-url https://$ACR_NAME.azurecr.io
       displayName: Update Web App Container Image
 
     # Restart Web App (forces image pull)
