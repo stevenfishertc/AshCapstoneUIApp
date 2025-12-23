@@ -4,7 +4,7 @@ trigger:
       - main
 
 variables:
-  ACR_NAME: stevencapstoneacr
+  ACR_NAME: acrcapstonedeva1b2c
   IMAGE_NAME: frontend-app
   IMAGE_TAG: $(Build.BuildId)
   RESOURCE_GROUP: steven-rg-capstone-dev
