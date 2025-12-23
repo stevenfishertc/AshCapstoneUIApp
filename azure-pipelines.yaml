@@ -7,34 +7,38 @@ variables:
   ACR_NAME: acrcapstonedeva1b2c
   IMAGE_NAME: frontend-app
   IMAGE_TAG: $(Build.BuildId)
-  RESOURCE_GROUP: steven-rg-capstone-dev
-  WEBAPP_NAME: stevens-webapp-frontend-dev
+
+  DEV_SERVICE_CONN: stevens-capstone-dev-conn
+  QA_SERVICE_CONN: stevens-capstone-qa-conn
+  PROD_SERVICE_CONN: stevens-capstone-prod-conn
+
+  DEV_RESOURCE_GROUP: steven-rg-capstone-dev
+  QA_RESOURCE_GROUP: steven-rg-capstone-qa
+  PROD_RESOURCE_GROUP: steven-rg-capstone-prod
+
+  DEV_WEBAPP: stevens-webapp-frontend-dev
+  QA_WEBAPP: stevens-webapp-frontend-qa
+  PROD_WEBAPP: stevens-webapp-frontend-prod
 
 pool:
   vmImage: ubuntu-latest
 
 stages:
-- stage: BuildAndDeploy
-  displayName: Build & Deploy Frontend to Azure Web App
-  jobs:
-  - job: BuildDeploy
-    displayName: Docker → ACR → Web App
-    steps:
 
-    # Login to Azure
-    - task: AzureCLI@2
-      displayName: Azure Login
-      inputs:
-        azureSubscription: stevens-capstone-dev-conn
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          az account show
+# =========================
+# BUILD STAGE
+# =========================
+- stage: Build
+  displayName: Build & Push Image
+  jobs:
+  - job: BuildImage
+    displayName: Docker Build
+    steps:
 
     - task: AzureCLI@2
       displayName: Build & Push Image to ACR
       inputs:
-        azureSubscription: stevens-capstone-dev-conn
+        azureSubscription: $(DEV_SERVICE_CONN)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
@@ -47,52 +51,109 @@ stages:
             --output tsv \
             --query accessToken)
 
-          echo "Logging Docker into ACR..."
           docker login $ACR_NAME.azurecr.io \
             -u 00000000-0000-0000-0000-000000000000 \
             -p $TOKEN
 
-          echo "Building Docker image..."
           docker build \
             -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
             -f frontend/Dockerfile \
             frontend
 
-          echo "Pushing Docker image..."
           docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
 
+# =========================
+# DEV DEPLOY (AUTO)
+# =========================
+- stage: Dev
+  displayName: Deploy to Dev
+  dependsOn: Build
+  jobs:
+  - deployment: DeployDev
+    displayName: Dev Deployment
+    environment: frontend-dev
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(DEV_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
 
-        # Configure Web App container
-    - task: AzureCLI@2
-      displayName: Update Web App Container Image
-      inputs:
-        azureSubscription: stevens-capstone-dev-conn
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          set -e
+                az webapp config container set \
+                  --name $DEV_WEBAPP \
+                  --resource-group $DEV_RESOURCE_GROUP \
+                  --container-image-name $IMAGE \
+                  --container-registry-url https://$ACR_NAME.azurecr.io
 
-          IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+                az webapp restart \
+                  --name $DEV_WEBAPP \
+                  --resource-group $DEV_RESOURCE_GROUP
 
-          echo "Configuring Web App to use image: $IMAGE"
+# =========================
+# QA DEPLOY (APPROVAL)
+# =========================
+- stage: QA
+  displayName: Deploy to QA
+  dependsOn: Dev
+  jobs:
+  - deployment: DeployQA
+    displayName: QA Deployment
+    environment: frontend-qa
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(QA_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
 
-          az webapp config container set \
-            --name $WEBAPP_NAME \
-            --resource-group $RESOURCE_GROUP \
-            --container-image-name $IMAGE \
-            --container-registry-url https://$ACR_NAME.azurecr.io
+                az webapp config container set \
+                  --name $QA_WEBAPP \
+                  --resource-group $QA_RESOURCE_GROUP \
+                  --container-image-name $IMAGE \
+                  --container-registry-url https://$ACR_NAME.azurecr.io
 
-    # Restart Web App (forces image pull)
-    - task: AzureCLI@2
-      displayName: Restart Web App
-      inputs:
-        azureSubscription: stevens-capstone-dev-conn
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: |
-          set -e
+                az webapp restart \
+                  --name $QA_WEBAPP \
+                  --resource-group $QA_RESOURCE_GROUP
 
-          echo "Restarting Web App..."
-          az webapp restart \
-            --name $WEBAPP_NAME \
-            --resource-group $RESOURCE_GROUP
+# =========================
+# PROD DEPLOY (APPROVAL)
+# =========================
+- stage: Prod
+  displayName: Deploy to Prod
+  dependsOn: QA
+  jobs:
+  - deployment: DeployProd
+    displayName: Prod Deployment
+    environment: frontend-prod
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: $(PROD_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+
+                az webapp config container set \
+                  --name $PROD_WEBAPP \
+                  --resource-group $PROD_RESOURCE_GROUP \
+                  --container-image-name $IMAGE \
+                  --container-registry-url https://$ACR_NAME.azurecr.io
+
+                az webapp restart \
+                  --name $PROD_WEBAPP \
+                  --resource-group $PROD_RESOURCE_GROUP
