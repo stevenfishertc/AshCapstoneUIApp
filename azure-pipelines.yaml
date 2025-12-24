@@ -16,25 +16,23 @@ variables:
   QA_RESOURCE_GROUP: steven-rg-capstone-qa
   PROD_RESOURCE_GROUP: steven-rg-capstone-prod
 
-  DEV_WEBAPP: stevens-webapp-frontend-dev
-  QA_WEBAPP: stevens-webapp-frontend-qa
-  PROD_WEBAPP: stevens-webapp-frontend-prod
+  DEV_WEBAPP_NAME: stevens-webapp-frontend-dev
+  QA_WEBAPP_NAME: stevens-webapp-frontend-qa
+  PROD_WEBAPP_NAME: stevens-webapp-frontend-prod
 
 pool:
   vmImage: ubuntu-latest
 
 stages:
-
 # =========================
-# BUILD STAGE
+# BUILD + DEPLOY DEV (no env)
 # =========================
-- stage: Build
-  displayName: Build & Push Image
+- stage: Dev
+  displayName: Build & Deploy to Dev Web App
   jobs:
-  - job: BuildImage
-    displayName: Docker Build
+  - job: BuildAndDeployDev
+    displayName: Docker → ACR → Dev Web App
     steps:
-
     - task: AzureCLI@2
       displayName: Build & Push Image to ACR
       inputs:
@@ -46,113 +44,139 @@ stages:
 
           echo "Getting ACR access token..."
           TOKEN=$(az acr login \
-            --name $ACR_NAME \
+            --name $(ACR_NAME) \
             --expose-token \
             --output tsv \
             --query accessToken)
 
-          docker login $ACR_NAME.azurecr.io \
+          echo "Logging Docker into ACR..."
+          docker login $(ACR_NAME).azurecr.io \
             -u 00000000-0000-0000-0000-000000000000 \
             -p $TOKEN
 
+          echo "Building Docker image..."
           docker build \
-            -t $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG \
+            -t $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG) \
             -f frontend/Dockerfile \
             frontend
 
-          docker push $ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG
+          echo "Pushing Docker image..."
+          docker push $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)
+
+    - task: AzureCLI@2
+      displayName: Update Dev Web App Container Image
+      inputs:
+        azureSubscription: $(DEV_SERVICE_CONN)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
+
+          echo "Configuring DEV Web App to use image: $IMAGE"
+          az webapp config container set \
+            --name $(DEV_WEBAPP_NAME) \
+            --resource-group $(DEV_RESOURCE_GROUP) \
+            --container-image-name $IMAGE \
+            --container-registry-url https://$(ACR_NAME).azurecr.io
+
+    - task: AzureCLI@2
+      displayName: Restart Dev Web App
+      inputs:
+        azureSubscription: $(DEV_SERVICE_CONN)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          echo "Restarting DEV Web App..."
+          az webapp restart \
+            --name $(DEV_WEBAPP_NAME) \
+            --resource-group $(DEV_RESOURCE_GROUP)
 
 # =========================
-# DEV DEPLOY (AUTO)
-# =========================
-- stage: Dev
-  displayName: Deploy to Dev
-  dependsOn: Build
-  jobs:
-  - deployment: DeployDev
-    displayName: Dev Deployment
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - task: AzureCLI@2
-            inputs:
-              azureSubscription: $(DEV_SERVICE_CONN)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
-
-                az webapp config container set \
-                  --name $DEV_WEBAPP \
-                  --resource-group $DEV_RESOURCE_GROUP \
-                  --container-image-name $IMAGE \
-                  --container-registry-url https://$ACR_NAME.azurecr.io
-
-                az webapp restart \
-                  --name $DEV_WEBAPP \
-                  --resource-group $DEV_RESOURCE_GROUP
-
-# =========================
-# QA DEPLOY (APPROVAL)
+# DEPLOY QA (approval via qa-env)
 # =========================
 - stage: QA
-  displayName: Deploy to QA
+  displayName: Deploy to QA Web App (Approval Required)
   dependsOn: Dev
   jobs:
   - deployment: DeployQA
-    displayName: QA Deployment
+    displayName: Deploy to QA
     environment: qa-env
     strategy:
       runOnce:
         deploy:
           steps:
           - task: AzureCLI@2
+            displayName: Update QA Web App Container Image
             inputs:
               azureSubscription: $(QA_SERVICE_CONN)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+                set -e
+                IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
 
+                echo "Configuring QA Web App to use image: $IMAGE"
                 az webapp config container set \
-                  --name $QA_WEBAPP \
-                  --resource-group $QA_RESOURCE_GROUP \
+                  --name $(QA_WEBAPP_NAME) \
+                  --resource-group $(QA_RESOURCE_GROUP) \
                   --container-image-name $IMAGE \
-                  --container-registry-url https://$ACR_NAME.azurecr.io
+                  --container-registry-url https://$(ACR_NAME).azurecr.io
 
+          - task: AzureCLI@2
+            displayName: Restart QA Web App
+            inputs:
+              azureSubscription: $(QA_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                echo "Restarting QA Web App..."
                 az webapp restart \
-                  --name $QA_WEBAPP \
-                  --resource-group $QA_RESOURCE_GROUP
+                  --name $(QA_WEBAPP_NAME) \
+                  --resource-group $(QA_RESOURCE_GROUP)
 
 # =========================
-# PROD DEPLOY (APPROVAL)
+# DEPLOY PROD (approval via producton-env)
 # =========================
 - stage: Prod
-  displayName: Deploy to Prod
+  displayName: Deploy to Prod Web App (Approval Required)
   dependsOn: QA
   jobs:
   - deployment: DeployProd
-    displayName: Prod Deployment
-    environment: production-env
+    displayName: Deploy to Prod
+    environment: producton-env
     strategy:
       runOnce:
         deploy:
           steps:
           - task: AzureCLI@2
+            displayName: Update Prod Web App Container Image
             inputs:
               azureSubscription: $(PROD_SERVICE_CONN)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                IMAGE="$ACR_NAME.azurecr.io/$IMAGE_NAME:$IMAGE_TAG"
+                set -e
+                IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
 
+                echo "Configuring PROD Web App to use image: $IMAGE"
                 az webapp config container set \
-                  --name $PROD_WEBAPP \
-                  --resource-group $PROD_RESOURCE_GROUP \
+                  --name $(PROD_WEBAPP_NAME) \
+                  --resource-group $(PROD_RESOURCE_GROUP) \
                   --container-image-name $IMAGE \
-                  --container-registry-url https://$ACR_NAME.azurecr.io
+                  --container-registry-url https://$(ACR_NAME).azurecr.io
 
+          - task: AzureCLI@2
+            displayName: Restart Prod Web App
+            inputs:
+              azureSubscription: $(PROD_SERVICE_CONN)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                echo "Restarting PROD Web App..."
                 az webapp restart \
-                  --name $PROD_WEBAPP \
-                  --resource-group $PROD_RESOURCE_GROUP
+                  --name $(PROD_WEBAPP_NAME) \
+                  --resource-group $(PROD_RESOURCE_GROUP)
