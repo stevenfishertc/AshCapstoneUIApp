@@ -146,7 +146,7 @@ stages:
   jobs:
   - deployment: DeployProd
     displayName: Deploy to Prod
-    environment: producton-env
+    environment: production-env
     strategy:
       runOnce:
         deploy:
