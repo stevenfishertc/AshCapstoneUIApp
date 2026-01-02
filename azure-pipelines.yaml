@@ -37,7 +37,7 @@ stages:
     - task: AzureCLI@2
       displayName: Build & Push Image to ACR
       inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
+        azureSubscription: $(AZURE_SUBSCRIPTION)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
@@ -67,7 +67,7 @@ stages:
     - task: AzureCLI@2
       displayName: Update Dev Web App Container Image
       inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
+        azureSubscription: $(AZURE_SUBSCRIPTION)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
@@ -84,7 +84,7 @@ stages:
     - task: AzureCLI@2
       displayName: Restart Dev Web App
       inputs:
-        azureSubscription: $(DEV_SERVICE_CONN)
+        azureSubscription: $(AZURE_SUBSCRIPTION)
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: |
@@ -111,7 +111,7 @@ stages:
           - task: AzureCLI@2
             displayName: Update QA Web App Container Image
             inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -128,7 +128,7 @@ stages:
           - task: AzureCLI@2
             displayName: Restart QA Web App
             inputs:
-              azureSubscription: $(QA_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -155,7 +155,7 @@ stages:
           - task: AzureCLI@2
             displayName: Update Prod Web App Container Image
             inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
@@ -172,7 +172,7 @@ stages:
           - task: AzureCLI@2
             displayName: Restart Prod Web App
             inputs:
-              azureSubscription: $(PROD_SERVICE_CONN)
+              azureSubscription: $(AZURE_SUBSCRIPTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
