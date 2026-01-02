@@ -8,6 +8,7 @@ variables:
   IMAGE_NAME: frontend-app
   IMAGE_TAG: $(Build.BuildId)
 
+  AZURE_SUBSCRIPTION: stevens-capstone-conn
   DEV_SERVICE_CONN: stevens-capstone-dev-conn
   QA_SERVICE_CONN: stevens-capstone-qa-conn
   PROD_SERVICE_CONN: stevens-capstone-prod-conn
