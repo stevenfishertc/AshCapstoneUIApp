@@ -6,9 +6,12 @@ function App() {
   const [selectedB, setSelectedB] = useState(null);
   const [response, setResponse] = useState(null);
 
-  // Use relative paths - nginx will route to the correct backend
+  // Get API URL from environment variable (set by Azure Web App settings)
+  const apiBaseUrl = process.env.REACT_APP_API_URL || window._env_?.REACT_APP_API_URL || '';
+
   const getApiUrl = (target) => {
-    return `/api/${target}`;
+    // Call APIM directly: https://apim-capstone-dev-a1b2c.privatelink.azure-api.net/api/a
+    return `${apiBaseUrl}/api/${target}`;
   };
 
   async function uploadTo(target) {
