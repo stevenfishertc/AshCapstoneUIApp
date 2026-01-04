@@ -181,3 +181,4 @@ stages:
                 az webapp restart \
                   --name $(PROD_WEBAPP_NAME) \
                   --resource-group $(PROD_RESOURCE_GROUP)
+
