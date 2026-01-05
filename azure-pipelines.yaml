@@ -4,14 +4,14 @@ trigger:
       - main
 
 variables:
-  ACR_NAME: acrcapstonedeva1b2c
   IMAGE_NAME: frontend-app
   IMAGE_TAG: $(Build.BuildId)
 
   AZURE_SUBSCRIPTION: stevens-capstone-conn
-  DEV_SERVICE_CONN: stevens-capstone-dev-conn
-  QA_SERVICE_CONN: stevens-capstone-qa-conn
-  PROD_SERVICE_CONN: stevens-capstone-prod-conn
+
+  DEV_ACR_NAME: acrcapstonedeva1b2c
+  QA_ACR_NAME: acrcapstoneqaa1b2c
+  PROD_ACR_NAME: acrcapstoneproda1b2c
 
   DEV_RESOURCE_GROUP: steven-rg-capstone-dev
   QA_RESOURCE_GROUP: steven-rg-capstone-qa
@@ -45,24 +45,24 @@ stages:
 
           echo "Getting ACR access token..."
           TOKEN=$(az acr login \
-            --name $(ACR_NAME) \
+            --name $(DEV_ACR_NAME) \
             --expose-token \
             --output tsv \
             --query accessToken)
 
           echo "Logging Docker into ACR..."
-          docker login $(ACR_NAME).azurecr.io \
+          docker login $(DEV_ACR_NAME).azurecr.io \
             -u 00000000-0000-0000-0000-000000000000 \
             -p $TOKEN
 
           echo "Building Docker image..."
           docker build \
-            -t $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG) \
+            -t $(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG) \
             -f frontend/Dockerfile \
             frontend
 
           echo "Pushing Docker image..."
-          docker push $(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)
+          docker push $(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)
 
     - task: AzureCLI@2
       displayName: Update Dev Web App Container Image
@@ -72,14 +72,14 @@ stages:
         scriptLocation: inlineScript
         inlineScript: |
           set -e
-          IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
+          IMAGE="$(DEV_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
 
           echo "Configuring DEV Web App to use image: $IMAGE"
           az webapp config container set \
             --name $(DEV_WEBAPP_NAME) \
             --resource-group $(DEV_RESOURCE_GROUP) \
             --container-image-name $IMAGE \
-            --container-registry-url https://$(ACR_NAME).azurecr.io
+            --container-registry-url https://$(DEV_ACR_NAME).azurecr.io
 
     - task: AzureCLI@2
       displayName: Restart Dev Web App
@@ -98,16 +98,48 @@ stages:
 # DEPLOY QA (approval via qa-env)
 # =========================
 - stage: QA
-  displayName: Deploy to QA Web App (Approval Required)
+  displayName: Build & Deploy to QA Web App (Approval Required)
   dependsOn: Dev
   jobs:
   - deployment: DeployQA
-    displayName: Deploy to QA
+    displayName: Build & Deploy to QA
     environment: qa-env
     strategy:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: Build & Push Image to QA ACR
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+
+                echo "Getting QA ACR access token..."
+                TOKEN=$(az acr login \
+                  --name $(QA_ACR_NAME) \
+                  --expose-token \
+                  --output tsv \
+                  --query accessToken)
+
+                echo "Logging Docker into QA ACR..."
+                docker login $(QA_ACR_NAME).azurecr.io \
+                  -u 00000000-0000-0000-0000-000000000000 \
+                  -p $TOKEN
+
+                echo "Building Docker image..."
+                docker build \
+                  -t $(QA_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG) \
+                  -f frontend/Dockerfile \
+                  frontend
+
+                echo "Pushing Docker image to QA ACR..."
+                docker push $(QA_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)
+
           - task: AzureCLI@2
             displayName: Update QA Web App Container Image
             inputs:
@@ -116,14 +148,14 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 set -e
-                IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
+                IMAGE="$(QA_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
 
                 echo "Configuring QA Web App to use image: $IMAGE"
                 az webapp config container set \
                   --name $(QA_WEBAPP_NAME) \
                   --resource-group $(QA_RESOURCE_GROUP) \
                   --container-image-name $IMAGE \
-                  --container-registry-url https://$(ACR_NAME).azurecr.io
+                  --container-registry-url https://$(QA_ACR_NAME).azurecr.io
 
           - task: AzureCLI@2
             displayName: Restart QA Web App
@@ -142,16 +174,48 @@ stages:
 # DEPLOY PROD (approval via producton-env)
 # =========================
 - stage: Prod
-  displayName: Deploy to Prod Web App (Approval Required)
+  displayName: Build & Deploy to Prod Web App (Approval Required)
   dependsOn: QA
   jobs:
   - deployment: DeployProd
-    displayName: Deploy to Prod
+    displayName: Build & Deploy to Prod
     environment: production-env
     strategy:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+
+          - task: AzureCLI@2
+            displayName: Build & Push Image to Prod ACR
+            inputs:
+              azureSubscription: $(AZURE_SUBSCRIPTION)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+
+                echo "Getting Prod ACR access token..."
+                TOKEN=$(az acr login \
+                  --name $(PROD_ACR_NAME) \
+                  --expose-token \
+                  --output tsv \
+                  --query accessToken)
+
+                echo "Logging Docker into Prod ACR..."
+                docker login $(PROD_ACR_NAME).azurecr.io \
+                  -u 00000000-0000-0000-0000-000000000000 \
+                  -p $TOKEN
+
+                echo "Building Docker image..."
+                docker build \
+                  -t $(PROD_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG) \
+                  -f frontend/Dockerfile \
+                  frontend
+
+                echo "Pushing Docker image to Prod ACR..."
+                docker push $(PROD_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)
+
           - task: AzureCLI@2
             displayName: Update Prod Web App Container Image
             inputs:
@@ -160,14 +224,14 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 set -e
-                IMAGE="$(ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
+                IMAGE="$(PROD_ACR_NAME).azurecr.io/$(IMAGE_NAME):$(IMAGE_TAG)"
 
                 echo "Configuring PROD Web App to use image: $IMAGE"
                 az webapp config container set \
                   --name $(PROD_WEBAPP_NAME) \
                   --resource-group $(PROD_RESOURCE_GROUP) \
                   --container-image-name $IMAGE \
-                  --container-registry-url https://$(ACR_NAME).azurecr.io
+                  --container-registry-url https://$(PROD_ACR_NAME).azurecr.io
 
           - task: AzureCLI@2
             displayName: Restart Prod Web App
