@@ -39,7 +39,7 @@ function App() {
 
   return (
     <div className="page">
-      <h1>Steven's Multi-Backend Image Upload Version 6</h1>
+      <h1>Steven's Multi-Backend Image Upload Version 7</h1>
 
       <div className="grid">
         <div className="card">
